@@ -48,7 +48,8 @@ protected # VIEWS
       para 'Database Connection String:'
       @edit_connection_string = edit_line 'sqlite://dogs.db', :width => 350, :margin_left => 5
       button 'Connect' do
-        connect @edit_connection_string.text
+        DatabaseGUI.db = Sequel.connect @edit_connection_string.text
+        visit '/' # refresh the home screen (new database)
       end
     end
 
@@ -97,19 +98,21 @@ protected # VIEWS
           # buttons
           flow :width => "#{ column_width }%" do
 
+            new_record = ! row[:id]
+
             # Save/Create button
-            button_text = row[:id] ? 'Save' : 'Create'
-            button button_text do
+            button(new_record ? 'Create' : 'Save') do
               values = {}
               column_names.each_with_index do |column_name, i|
                 values[column_name] = row_element.contents[i].contents.first.text
               end
               id = values.delete :id
+
               begin
-                if id.strip != ''
-                  @table.filter(:id => id.to_i).update(values)
-                else
+                if new_record
                   @table.insert(values)
+                else
+                  @table.filter(:id => id.to_i).update(values)
                 end
                 visit app.location # refresh
               rescue Exception => ex
@@ -118,13 +121,14 @@ protected # VIEWS
             end
 
             # Delete button
-            if row[:id]
+            unless new_record
               button 'X' do
                 values = {}
                 column_names.each_with_index do |column_name, i|
                   values[column_name] = row_element.contents[i].contents.first.text
                 end
                 id = values.delete :id
+
                 begin
                   @table.filter(:id => id.to_i).delete
                   visit app.location # refresh
@@ -136,15 +140,7 @@ protected # VIEWS
           end
         end
       end
-
     end
-  end
-
-private
-
-  def connect connection_string
-    DatabaseGUI.db = Sequel.connect connection_string
-    visit '/' # refresh home screen
   end
 end
 

@@ -6,45 +6,139 @@ end
 
 require 'sequel'
 
-Shoes.app do
+# Wrapper for getting information about a database
+class Database
 
-  def connect connection_string
-    begin
-      @db = Sequel.connect connection_string
-      update_tables
-    rescue Exception => ex
-      alert "Connection failed: #{ ex.message }"
+  def initialize connection_string
+    @db = Sequel.connect connection_string
+  end
+
+  def table_names
+    @db.tables
+  end
+
+  def column_names table_name
+    # [ [:id, {...}], [:name, {...}] ]
+    columns = @db.schema(table_name)
+    columns.map {|column| column.first }
+  end
+
+  def first_10_rows table_name
+    @db[table_name].limit(10).all
+  end
+
+  def count table_name
+    @db[table_name].count
+  end
+end
+
+class DatabaseGUI < Shoes
+  url '/',             :index
+  url '/tables/(\w+)', :table
+
+  # Application variables
+  class << self
+    attr_accessor :database
+  end
+
+  # Elements
+  attr_accessor :edit_connection_string
+
+  def index
+    database_info
+
+    if database
+      table_list :width => '20%'
+      flow :width => '80%' do
+        para '(select a table from the list on the left)'
+      end
+    else
+      para 'No database loaded yet'
     end
   end
 
-  def update_tables
-    @tables.clear
-    @db.tables.each do |table|
-      @tables.append do 
-        stack do
-          title table
+  def table table_name
+    database_info
 
-          @db.schema(table).each do |column|
-            # [:id, {:type => :integer, ...}]
-            name = column.first
-            type = column.last[:type]
-            para "#{ name } [#{ type }]"
-          end
-        end
+    if database
+      table_list :width => '20%'
+      column_list table_name, :width => '80%'
+    else
+      para 'No database loaded yet'
+    end
+  end
+
+protected # VIEWS
+
+  # Displays an edit_line that lets us enter a connection string.
+  # Calls #connect("conn string") when a string is entered.
+  def database_info
+    flow do
+      border black
+      para 'Database Connection String:'
+      self.edit_connection_string = edit_line 'sqlite://dogs.db'
+      button 'Connect' do
+        connect edit_connection_string.text
       end
     end
   end
 
-  # Top of the screen, where we enter the database info
-  flow do
-    border black
-    para 'Database Connection String:'
-    @connection_string = edit_line 'sqlite://dogs.db'
-    button('Connect'){ connect @connection_string.text }
+  def table_list options = {}
+    stack(options) do
+      border blue
+      database.table_names.each do |table_name|
+        link_text = "#{table_name} (#{database.count(table_name)})"
+        para link(link_text, :click => "/tables/#{ table_name }")
+      end
+    end
   end
 
-  # The list of tables
-  @tables = stack do
+  def column_list table_name, options = {}
+    stack(options) do
+      border red
+      column_names = database.column_names table_name
+      column_width = 100.0 / column_names.length
+
+      # column headers
+      flow do
+        column_names.each do |column_name|
+          flow :width => "#{ column_width }%" do
+            border black
+            para strong(column_name)
+          end
+        end
+      end
+
+      # column values (rows)
+      database.first_10_rows(table_name).each do |row|
+        flow do
+          column_names.each do |column_name|
+            flow :width => "#{ column_width }%" do
+              border black
+              para row[column_name].to_s 
+            end
+          end
+        end
+      end
+
+    end
   end
 
+private
+
+  # TODO should make it easy to delegate to application ... 
+  #      maybe just app.database or something?
+  def database
+    DatabaseGUI.database
+  end
+  def database= value
+    DatabaseGUI.database = value
+  end
+
+  def connect connection_string
+    self.database = Database.new connection_string
+    visit '/' # refresh
+  end
 end
+
+Shoes.app :title => 'Database GUI'

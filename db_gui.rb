@@ -1,5 +1,4 @@
 #! /usr/bin/env shoes
-# vim:set ft=ruby:
 
 Shoes.setup { gem 'sequel' }
 require 'sequel'

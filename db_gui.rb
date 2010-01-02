@@ -10,13 +10,12 @@ class DatabaseGUI < Shoes
   url '/',             :index
   url '/tables/(\w+)', :table
 
-  # Application variables
   class << self
-    attr_accessor :db
+    attr_accessor :db # cache the DB object on the object so it's available
   end
 
-  # Elements
-  attr_accessor :edit_connection_string
+  # shortcut to the DB object
+  def db() DatabaseGUI.db end
 
   def index
     database_info
@@ -27,7 +26,7 @@ class DatabaseGUI < Shoes
         para '(select a table from the list on the left)'
       end
     else
-      para 'No database loaded yet'
+      para 'No database loaded yet', :align => 'center'
     end
   end
 
@@ -46,18 +45,22 @@ protected # VIEWS
   # Calls #connect("conn string") when a string is entered.
   def database_info
     flow do
-      border black
       para 'Database Connection String:'
-      self.edit_connection_string = edit_line 'sqlite://dogs.db'
+      @edit_connection_string = edit_line 'sqlite://dogs.db', :width => 350, :margin_left => 5
       button 'Connect' do
-        connect edit_connection_string.text
+        connect @edit_connection_string.text
       end
+    end
+
+    # separator
+    stack :height => 1 do
+      background black
     end
   end
 
+  # Displays a list of links to table names
   def table_list options = {}
     stack(options) do
-      border blue
       db.tables.each do |table_name|
         link_text = "#{table_name} (#{db[table_name].count})"
         para link(link_text, :click => "/tables/#{ table_name }")
@@ -65,9 +68,9 @@ protected # VIEWS
     end
   end
 
+  # Displays column information and a few rows for the given table
   def column_list table_name, options = {}
     stack(options) do
-      border red
       column_names = @table.columns
       column_width = 100.0 / (column_names.length + 1) # +1 for the save button
 
@@ -75,7 +78,6 @@ protected # VIEWS
       flow do
         column_names.each do |column_name|
           flow :width => "#{ column_width }%" do
-            border black
             para strong(column_name)
           end
         end
@@ -140,15 +142,10 @@ protected # VIEWS
 
 private
 
-  # shortcut to database
-  def db
-    DatabaseGUI.db
-  end
-
   def connect connection_string
     DatabaseGUI.db = Sequel.connect connection_string
     visit '/' # refresh home screen
   end
 end
 
-Shoes.app :title => 'Database GUI'
+Shoes.app :title => 'Database GUI', :width => 750

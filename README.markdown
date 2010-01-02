@@ -1,7 +1,7 @@
 DatabaseGUI
 ===========
 
-DatabaseGUI is a little [Shoes][]-based database GUI, using [Sequel][] for the database access.
+DatabaseGUI is a *very* simple little [Shoes][]-based database GUI, using [Sequel][] for the database access.
 
 Installation
 ------------

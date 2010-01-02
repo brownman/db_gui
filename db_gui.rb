@@ -6,55 +6,13 @@ end
 
 require 'sequel'
 
-# Wrapper for getting information about a database
-class Database
-
-  def initialize connection_string
-    @db = Sequel.connect connection_string
-  end
-
-  def table_names
-    @db.tables
-  end
-
-  def column_names table_name
-    # [ [:id, {...}], [:name, {...}] ]
-    columns = @db.schema(table_name)
-    columns.map {|column| column.first }
-  end
-
-  def first_10_rows table_name
-    @db[table_name].limit(10).all
-  end
-
-  def first_10_rows_with_new_row table_name
-    first_10_rows(table_name) + [{}]
-  end
-
-  def count table_name
-    @db[table_name].count
-  end
-
-  def update_row table_name, id_primary_key, values
-    if id_primary_key.strip != ''
-      @db[table_name.to_sym].filter(:id => id_primary_key.to_i).update(values)
-    else
-      @db[table_name.to_sym].insert(values)
-    end
-  end
-
-  def delete_row table_name, id_primary_key
-    @db[table_name.to_sym].filter(:id => id_primary_key.to_i).delete
-  end
-end
-
 class DatabaseGUI < Shoes
   url '/',             :index
   url '/tables/(\w+)', :table
 
   # Application variables
   class << self
-    attr_accessor :database
+    attr_accessor :db
   end
 
   # Elements
@@ -63,7 +21,7 @@ class DatabaseGUI < Shoes
   def index
     database_info
 
-    if database
+    if db
       table_list :width => '20%'
       flow :width => '80%' do
         para '(select a table from the list on the left)'
@@ -74,14 +32,12 @@ class DatabaseGUI < Shoes
   end
 
   def table table_name
-    database_info
+    @table = db[table_name.to_sym]
+    @rows  = @table.limit(10).all # get some rows
 
-    if database
-      table_list :width => '20%'
-      column_list table_name, :width => '80%'
-    else
-      para 'No database loaded yet'
-    end
+    database_info
+    table_list :width => '20%'
+    column_list table_name, :width => '80%'
   end
 
 protected # VIEWS
@@ -102,8 +58,8 @@ protected # VIEWS
   def table_list options = {}
     stack(options) do
       border blue
-      database.table_names.each do |table_name|
-        link_text = "#{table_name} (#{database.count(table_name)})"
+      db.tables.each do |table_name|
+        link_text = "#{table_name} (#{db[table_name].count})"
         para link(link_text, :click => "/tables/#{ table_name }")
       end
     end
@@ -112,7 +68,7 @@ protected # VIEWS
   def column_list table_name, options = {}
     stack(options) do
       border red
-      column_names = database.column_names table_name
+      column_names = @table.columns
       column_width = 100.0 / (column_names.length + 1) # +1 for the save button
 
       # column headers
@@ -126,14 +82,20 @@ protected # VIEWS
       end
 
       # column values (rows)
-      database.first_10_rows_with_new_row(table_name).each do |row|
+      (@rows + [{}]).each do |row|
         row_element = flow do
+
+          # edit box for attribute
           column_names.each do |column_name|
             flow :width => "#{ column_width }%" do
               textbox = edit_line row[column_name], :width => '100%'
             end
           end
+
+          # buttons
           flow :width => "#{ column_width }%" do
+
+            # Save/Create button
             button_text = row[:id] ? 'Save' : 'Create'
             button button_text do
               values = {}
@@ -142,13 +104,18 @@ protected # VIEWS
               end
               id = values.delete :id
               begin
-                database.update_row table_name, id, values
+                if id.strip != ''
+                  @table.filter(:id => id.to_i).update(values)
+                else
+                  @table.insert(values)
+                end
                 visit app.location # refresh
               rescue Exception => ex
                 alert("Boom!  #{ ex.inspect }")
               end
             end
 
+            # Delete button
             if row[:id]
               button 'X' do
                 values = {}
@@ -157,7 +124,7 @@ protected # VIEWS
                 end
                 id = values.delete :id
                 begin
-                  database.delete_row table_name, id
+                  @table.filter(:id => id.to_i).delete
                   visit app.location # refresh
                 rescue Exception => ex
                   alert("Boom!  #{ ex.inspect }")
@@ -173,18 +140,14 @@ protected # VIEWS
 
 private
 
-  # TODO should make it easy to delegate to application ... 
-  #      maybe just app.database or something?
-  def database
-    DatabaseGUI.database
-  end
-  def database= value
-    DatabaseGUI.database = value
+  # shortcut to database
+  def db
+    DatabaseGUI.db
   end
 
   def connect connection_string
-    self.database = Database.new connection_string
-    visit '/' # refresh
+    DatabaseGUI.db = Sequel.connect connection_string
+    visit '/' # refresh home screen
   end
 end
 

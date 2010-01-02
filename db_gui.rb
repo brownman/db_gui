@@ -31,12 +31,14 @@ class DatabaseGUI < Shoes
   end
 
   def table table_name
-    @table = db[table_name.to_sym]
-    @rows  = @table.limit(10).all # get some rows
+    @table        = db[table_name.to_sym]
+    @columns      = @table.columns
+    @column_width = 100.0 / (@columns.length + 1) # + 1 extra column for save/delete buttons
+    @rows         = @table.limit(10).all # get some rows
 
     database_info
     table_list :width => '20%'
-    column_list table_name, :width => '80%'
+    table_columns table_name, :width => '80%'
   end
 
 protected # VIEWS
@@ -70,78 +72,101 @@ protected # VIEWS
   end
 
   # Displays column information and a few rows for the given table
-  def column_list table_name, options = {}
+  def table_columns table_name, options = {}
     stack(options) do
-      column_names = @table.columns
-      column_width = 100.0 / (column_names.length + 1) # +1 for the save button
+      column_headers
+      column_rows
+    end
+  end
 
-      # column headers
-      flow do
-        column_names.each do |column_name|
-          flow :width => "#{ column_width }%" do
-            para strong(column_name)
-          end
+  def column_headers
+    flow do
+      @columns.each do |column|
+        flow :width => "#{ @column_width }%" do
+          para strong(column)
         end
       end
+    end
+  end
 
-      # column values (rows)
-      (@rows + [{}]).each do |row|
-        row_element = flow do
+  # returns has like { :name => 'value of text box' } given the row element
+  def row_values row_element
+    info "row_values for: #{ row_element.contents.to_yaml }"
+    values = {}
+    @columns.each_with_index do |column_name, i|
+      values[column_name] = row_element.contents[i].contents.first.text
+    end
+    values
+  end
 
-          # edit box for attribute
-          column_names.each do |column_name|
-            flow :width => "#{ column_width }%" do
-              textbox = edit_line row[column_name], :width => '100%'
-            end
+  def save_button
+    button 'Save' do |btn|
+      values = row_values btn.parent.parent
+      id     = values.delete :id
+
+      begin
+        @table.filter(:id => id.to_i).update(values)
+        visit app.location # refresh
+      rescue Exception => ex
+        alert("Boom!  #{ ex.inspect }")
+      end
+    end
+  end
+
+  def create_button
+    button 'Create' do |btn|
+      values = row_values btn.parent.parent
+      id     = values.delete :id
+
+      begin
+        @table.insert(values)
+        visit app.location # refresh
+      rescue Exception => ex
+        alert("Boom!  #{ ex.inspect }")
+      end
+    end
+  end
+
+  def delete_button
+    button 'X' do |btn|
+      values = row_values btn.parent.parent
+      id     = values.delete :id
+
+      begin
+        @table.filter(:id => id.to_i).delete
+        visit app.location # refresh
+      rescue Exception => ex
+        alert("Boom!  #{ ex.inspect }")
+      end
+    end
+  end
+
+  def column_rows
+    (@rows + [{}]).each do |row|
+      flow do
+
+        # edit boxes for attributes
+        @columns.each do |column_name|
+          flow :width => "#{ @column_width }%" do
+            textbox = edit_line row[column_name], :width => '100%'
           end
+        end
 
-          # buttons
-          flow :width => "#{ column_width }%" do
+        # buttons
+        flow :width => "#{ @column_width }%" do
+          new_record = row[:id].nil?
 
-            new_record = ! row[:id]
-
-            # Save/Create button
-            button(new_record ? 'Create' : 'Save') do
-              values = {}
-              column_names.each_with_index do |column_name, i|
-                values[column_name] = row_element.contents[i].contents.first.text
-              end
-              id = values.delete :id
-
-              begin
-                if new_record
-                  @table.insert(values)
-                else
-                  @table.filter(:id => id.to_i).update(values)
-                end
-                visit app.location # refresh
-              rescue Exception => ex
-                alert("Boom!  #{ ex.inspect }")
-              end
-            end
-
-            # Delete button
-            unless new_record
-              button 'X' do
-                values = {}
-                column_names.each_with_index do |column_name, i|
-                  values[column_name] = row_element.contents[i].contents.first.text
-                end
-                id = values.delete :id
-
-                begin
-                  @table.filter(:id => id.to_i).delete
-                  visit app.location # refresh
-                rescue Exception => ex
-                  alert("Boom!  #{ ex.inspect }")
-                end
-              end
-            end
+          if new_record
+            create_button
+          else
+            save_button
+            delete_button
           end
         end
       end
     end
   end
+
 end
 
 Shoes.app :title => 'Database GUI', :width => 750

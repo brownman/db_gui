@@ -30,6 +30,10 @@ class Database
   def count table_name
     @db[table_name].count
   end
+
+  def update_row table_name, id_primary_key, values
+    @db[table_name.to_sym].filter(:id => id_primary_key.to_i).update(values)
+  end
 end
 
 class DatabaseGUI < Shoes
@@ -97,7 +101,7 @@ protected # VIEWS
     stack(options) do
       border red
       column_names = database.column_names table_name
-      column_width = 100.0 / column_names.length
+      column_width = 100.0 / (column_names.length + 1) # +1 for the save button
 
       # column headers
       flow do
@@ -111,11 +115,25 @@ protected # VIEWS
 
       # column values (rows)
       database.first_10_rows(table_name).each do |row|
-        flow do
+        row = flow do
           column_names.each do |column_name|
             flow :width => "#{ column_width }%" do
-              border black
-              para row[column_name].to_s 
+              textbox = edit_line row[column_name], :width => '100%'
+            end
+          end
+          flow :width => "#{ column_width }%" do
+            button 'Save' do
+              values = {}
+              column_names.each_with_index do |column_name, i|
+                values[column_name] = row.contents[i].contents.first.text
+              end
+              id = values.delete :id
+              begin
+                database.update_row table_name, id, values
+                alert('Saved')
+              rescue Exception => ex
+                alert("Boom!  #{ ex.inspect }")
+              end
             end
           end
         end

@@ -27,12 +27,24 @@ class Database
     @db[table_name].limit(10).all
   end
 
+  def first_10_rows_with_new_row table_name
+    first_10_rows(table_name) + [{}]
+  end
+
   def count table_name
     @db[table_name].count
   end
 
   def update_row table_name, id_primary_key, values
-    @db[table_name.to_sym].filter(:id => id_primary_key.to_i).update(values)
+    if id_primary_key.strip != ''
+      @db[table_name.to_sym].filter(:id => id_primary_key.to_i).update(values)
+    else
+      @db[table_name.to_sym].insert(values)
+    end
+  end
+
+  def delete_row table_name, id_primary_key
+    @db[table_name.to_sym].filter(:id => id_primary_key.to_i).delete
   end
 end
 
@@ -114,25 +126,42 @@ protected # VIEWS
       end
 
       # column values (rows)
-      database.first_10_rows(table_name).each do |row|
-        row = flow do
+      database.first_10_rows_with_new_row(table_name).each do |row|
+        row_element = flow do
           column_names.each do |column_name|
             flow :width => "#{ column_width }%" do
               textbox = edit_line row[column_name], :width => '100%'
             end
           end
           flow :width => "#{ column_width }%" do
-            button 'Save' do
+            button_text = row[:id] ? 'Save' : 'Create'
+            button button_text do
               values = {}
               column_names.each_with_index do |column_name, i|
-                values[column_name] = row.contents[i].contents.first.text
+                values[column_name] = row_element.contents[i].contents.first.text
               end
               id = values.delete :id
               begin
                 database.update_row table_name, id, values
-                alert('Saved')
+                visit app.location # refresh
               rescue Exception => ex
                 alert("Boom!  #{ ex.inspect }")
+              end
+            end
+
+            if row[:id]
+              button 'X' do
+                values = {}
+                column_names.each_with_index do |column_name, i|
+                  values[column_name] = row_element.contents[i].contents.first.text
+                end
+                id = values.delete :id
+                begin
+                  database.delete_row table_name, id
+                  visit app.location # refresh
+                rescue Exception => ex
+                  alert("Boom!  #{ ex.inspect }")
+                end
               end
             end
           end
